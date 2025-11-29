@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>فروش اکانت پیام‌رسان — پنل</title>
+<style>
+  :root{
+    --bg:#fff7fb;
+    --card:#ffffff;
+    --muted:#7b7b88;
+    --accent:#7ad7a7;
+    --accent-2:#90caf9;
+    --shadow: 0 10px 30px rgba(30,30,60,0.08);
+    --radius:18px;
+    font-family: "Vazirmatn", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg),#fff);color:#222}
+  .wrap{max-width:520px;margin:18px auto;padding:16px}
+  h1{font-size:20px;margin:6px 0 14px;text-align:center}
+  .big-center{display:flex;flex-direction:column;gap:12px;align-items:center;padding:18px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;background:var(--card);box-shadow:var(--shadow);border:none;font-weight:700;cursor:pointer}
+  .primary{background:linear-gradient(180deg,#7ce1b6,var(--accent));color:#023826}
+  .green{background:#28a745;color:white}
+  .red{background:#ff6b6b;color:white}
+  .services{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .svc{min-width:86px;padding:10px;border-radius:12px;background:var(--card);box-shadow:var(--shadow);text-align:center;cursor:pointer}
+  .cards{margin-top:14px;display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--card);padding:12px;border-radius:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px}
+  .card .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .price{font-size:18px;font-weight:800;background:#fff;padding:8px;border-radius:10px;box-shadow:0 6px 16px rgba(0,0,0,0.04)}
+  .meta{font-size:13px;color:var(--muted)}
+  .tag{background:#fff;padding:8px;border-radius:10px;box-shadow:0 6px 16px rgba(0,0,0,0.04);font-weight:700}
+  .overlay{position:fixed;inset:0;background:rgba(10,10,20,0.45);display:none;align-items:center;justify-content:center;padding:18px;z-index:200}
+  .overlay.show{display:flex}
+  .modal{background:var(--card);width:100%;max-width:520px;border-radius:14px;padding:16px;box-shadow:var(--shadow)}
+  label{font-size:13px;color:var(--muted);display:block;margin:8px 0 6px}
+  input,select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #eee;font-size:14px;box-sizing:border-box}
+  .row-h{display:flex;gap:10px}
+  .small{width:40%}
+  .list{background:var(--card);padding:10px;border-radius:12px;box-shadow:var(--shadow);max-height:320px;overflow:auto}
+  .form-item{background:#f7f9fb;padding:10px;border-radius:12px;margin-bottom:8px}
+  .status-approved{color:green;font-weight:700}
+  .status-rejected{color:gray;font-weight:700}
+  .toast{position:fixed;top:18px;left:18px;background:rgba(20,20,30,0.95);color:white;padding:10px 12px;border-radius:10px;box-shadow:var(--shadow);z-index:300}
+  footer{margin-top:20px;text-align:center;color:var(--muted);font-size:13px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  .editable-num{width:90px;padding:6px;border-radius:8px;border:1px solid #eee}
+  @media(min-width:900px){.wrap{max-width:760px}}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="big-center">
+      <h1>فروش اکانت پیام‌رسان — نسخهٔ آزمایشی</h1>
+      <button id="openBuy" class="btn primary">خرید اکانت پیام‌رسان</button>
+      <button id="openAdmin" class="btn">رفتن به پنل ادمین</button>
+      <button id="openMyForms" class="btn">فرم‌ها</button>
+    </div>
+
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong>سرویس‌ها</strong>
+        <small class="meta">روی هر سرویس بزنید تا کارت‌های آن نمایش داده شود</small>
+      </div>
+      <div class="services" id="serviceList"></div>
+      <div class="cards" id="cardsContainer"></div>
+    </div>
+
+    <footer>طراحی «پفکی» — داده‌ها محلی (localStorage). بعداً می‌توان بک‌اند اضافه کرد.</footer>
+  </div>
+
+  <!-- modal / overlay -->
+  <div id="overlay" class="overlay" aria-hidden="true">
+    <div id="modal" class="modal"></div>
+  </div>
+
+  <div id="toastRoot"></div>
+
+<script>
+/* ================= CONFIG & STORAGE ================= */
+const STORAGE_KEY = 'puffy_store_v2';
+const ADMIN_PASS_KEY = 'puffy_admin_pass';
+const LAST_PHONE_KEY = 'puffy_last_phone';
+
+// default services
+const DEFAULT_SERVICES = [
+  {id:'telegram', name:'تلگرام'},
+  {id:'rubika', name:'روبیکا'},
+  {id:'whatsapp', name:'واتساپ'},
+  {id:'ita', name:'ایتا'},
+  {id:'bale', name:'بله'}
+];
+
+// init admin pass if not set
+if(!localStorage.getItem(ADMIN_PASS_KEY)) localStorage.setItem(ADMIN_PASS_KEY, 'aA2468erfan');
+
+// load DB (services, cards, forms)
+function loadDB(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(!raw){
+    const base = { services: DEFAULT_SERVICES.slice(), cards: [], forms: [] };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(base));
+    return base;
+  }
+  try { return JSON.parse(raw); } catch(e){ const base = { services: DEFAULT_SERVICES.slice(), cards: [], forms: [] }; localStorage.setItem(STORAGE_KEY, JSON.stringify(base)); return base; }
+}
+function saveDB(db){ localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
+
+let db = loadDB();
+
+/* ================= UI HELPERS ================= */
+const serviceListEl = document.getElementById('serviceList');
+const cardsContainerEl = document.getElementById('cardsContainer');
+const overlay = document.getElementById('overlay');
+const modal = document.getElementById('modal');
+const toastRoot = document.getElementById('toastRoot');
+
+function showToast(msg, time=3000){
+  const t = document.createElement('div'); t.className='toast'; t.textContent = msg;
+  toastRoot.appendChild(t);
+  setTimeout(()=>{ t.style.opacity=0; setTimeout(()=>t.remove(),350); }, time);
+}
+
+/* ================= RENDERING ================= */
+function getServiceName(id){ const s = db.services.find(x=>x.id===id); return s? s.name : id; }
+
+function renderServices(){
+  serviceListEl.innerHTML = '';
+  db.services.forEach(s=>{
+    const el = document.createElement('div');
+    el.className='svc';
+    el.innerHTML = `<div style="font-weight:800">${escapeHtml(s.name)}</div><div class="meta">${escapeHtml(s.id)}</div>`;
+    el.addEventListener('click', ()=> renderCardsForService(s.id));
+    serviceListEl.appendChild(el);
+  });
+}
+
+function renderCardsForService(serviceId){
+  cardsContainerEl.innerHTML = '';
+  const cards = db.cards.filter(c=>c.service===serviceId);
+  if(cards.length===0){ cardsContainerEl.innerHTML = '<div class="meta">هیچ آیتمی موجود نیست. (ادمین می‌تواند اضافه کند)</div>'; return; }
+  cards.forEach(card=>{
+    const div = document.createElement('div'); div.className='card';
+    // show price, country, messenger name as white tag boxes
+    div.innerHTML = `
+      <div class="row">
+        <div class="tag price">${escapeHtml(formatPrice(card.price))} تومان</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="tag">${escapeHtml(card.country)}</div>
+          <div class="tag">${escapeHtml(getServiceName(card.service))}</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="meta">باقی‌مانده: ${card.remaining}</div>
+        <div class="meta"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn green" data-buy="${card.id}">خرید</button>
+      </div>
+    `;
+    div.querySelector('[data-buy]').addEventListener('click', ()=> openBuyModal(card.id));
+    cardsContainerEl.appendChild(div);
+  });
+}
+
+/* ================= ESCAPE & FORMAT ================= */
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function formatPrice(v){ if(v===undefined||v===null) return ''; return String(v).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+
+/* ================= MODAL UTILS ================= */
+function showModal(html){
+  modal.innerHTML = html;
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-hidden','false');
+}
+function closeModal(){
+  overlay.classList.remove('show');
+  overlay.setAttribute('aria-hidden','true');
+  modal.innerHTML = '';
+}
+overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
+
+/* ================= BUY FLOW ================= */
+document.getElementById('openBuy').addEventListener('click', ()=>{
+  // open a modal listing services to pick or scroll
+  const html = `
+    <h3>خرید اکانت — انتخاب سرویس</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+      ${db.services.map(s=>`<button class="btn" data-svc="${s.id}">${escapeHtml(s.name)}</button>`).join('')}
+    </div>
+    <div style="height:8px"></div>
+    <div style="text-align:left"><button class="btn" onclick="closeModal()">بستن</button></div>
+  `;
+  showModal(html);
+  // attach handlers
+  modal.querySelectorAll('[data-svc]').forEach(b=> b.addEventListener('click', ()=> { closeModal(); renderCardsForService(b.getAttribute('data-svc')); window.scrollTo({top:cardsContainerEl.offsetTop-20, behavior:'smooth'}); }));
+});
+
+function openBuyModal(cardId){
+  const card = db.cards.find(c=>c.id===cardId);
+  if(!card) return alert('کارت پیدا نشد');
+  const html = `
+    <h3>خرید — ${escapeHtml(getServiceName(card.service))}</h3>
+    <div class="list">
+      <div class="card">
+        <div class="row"><div class="tag price">${escapeHtml(formatPrice(card.price))} تومان</div>
+          <div style="display:flex;gap:8px;align-items:center"><div class="tag">${escapeHtml(card.country)}</div><div class="tag">${escapeHtml(getServiceName(card.service))}</div></div>
+        </div>
+        <div style="margin-top:8px" class="meta">باقی‌مانده: ${card.remaining}</div>
+      </div>
+    </div>
+    <label>شماره تلفن (11 رقم)</label>
+    <input id="buy_phone" placeholder="09xxxxxxxxx" />
+    <label>پیام‌رسان (انتخاب)</label>
+    <select id="buy_service">${db.services.map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}</select>
+    <label>آیدی (با @ یا بدون)</label>
+    <input id="buy_uid" placeholder="@username یا username" />
+    <label>ایمیل (اختیاری)</label>
+    <input id="buy_email" placeholder="example@mail.com" />
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn primary" id="submit_buy">ارسال فرم</button>
+      <button class="btn" id="cancel_buy">انصراف</button>
+    </div>
+  `;
+  showModal(html);
+
+  // prefill last phone if present
+  const last = localStorage.getItem(LAST_PHONE_KEY);
+  if(last){ const inp = document.getElementById('buy_phone'); if(inp) inp.value = last; }
+
+  document.getElementById('cancel_buy').addEventListener('click', closeModal);
+  document.getElementById('submit_buy').addEventListener('click', ()=>{
+    const phone = document.getElementById('buy_phone').value.trim();
+    const service = document.getElementById('buy_service').value;
+    let uid = document.getElementById('buy_uid').value.trim();
+    const email = document.getElementById('buy_email').value.trim();
+
+    // validations
+    if(!/^0?9\d{9}$/.test(phone)) return alert('شماره تلفن باید 11 رقمی و با 09 آغاز شود');
+    if(!uid) return alert('آیدی را وارد کنید');
+    if(!uid.startsWith('@')) uid = '@' + uid;
+    if(!/[A-Za-z0-9]$/.test(uid)) return alert('آخرین کاراکتر آیدی باید عدد یا حرف انگلیسی باشد');
+    // create form object
+    const form = {
+      id: 'f_'+Date.now(),
+      cardId: card.id,
+      service,
+      phone,
+      uid,
+      email: email || '',
+      status: 'pending', // pending | approved | rejected
+      adminNote: ''
+    };
+    db.forms.unshift(form);
+    saveDB(db);
+    localStorage.setItem(LAST_PHONE_KEY, phone);
+    closeModal();
+    // confirmation modal
+    showModal(`<div style="padding:8px"><h3>بله!</h3><p>فرم شما ارسال شد و تا 24 ساعت آینده ادمین به ایدی یا شماره شما در پیامرسانی که انتخاب کردید پیام می‌دهد و پس از عملیات پرداخت اکانت توسط ادمین به شما احیا می‌شود.</p><div style="text-align:left;margin-top:10px"><button class="btn" onclick="closeModal()">باشه</button></div></div>`);
+    renderCardsForService(card.service);
+  });
+}
+
+/* ================= PUBLIC FORMS VIEW (کاربر) ================= */
+document.getElementById('openMyForms').addEventListener('click', openMyForms);
+function openMyForms(){
+  const myPhone = localStorage.getItem(LAST_PHONE_KEY);
+  const myForms = myPhone ? db.forms.filter(f=>f.phone===myPhone) : [];
+  const html = `
+    <h3>فرم‌های شما</h3>
+    <div class="list">${myForms.length ? myForms.map(f=>{
+      const statusLabel = f.status==='pending' ? 'در انتظار' : (f.status==='approved' ? '<span class="status-approved">تایید شده</span>' : '<span class="status-rejected">مسترد شده</span>');
+      return `<div class="form-item"><div><strong>${escapeHtml(f.id)}</strong> — ${escapeHtml(getServiceName(f.service))}</div><div class="meta">${statusLabel}</div><div class="meta">${f.adminNote? 'توضیح: '+escapeHtml(f.adminNote): ''}</div></div>`;
+    }).join('') : '<div class="meta">فرمی برای شماره شما ثبت نشده است.</div>'}</div>
+    <div style="text-align:left;margin-top:10px"><button class="btn" onclick="closeModal()">بستن</button></div>
+  `;
+  showModal(html);
+}
+
+/* ================= ADMIN PANEL ================= */
+document.getElementById('openAdmin').addEventListener('click', openAdminLogin);
+
+function openAdminLogin(){
+  const html = `
+    <h3>ورود به پنل ادمین</h3>
+    <label>رمز را وارد کنید</label>
+    <input id="admin_pass_input" type="password" placeholder="رمز" />
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn primary" id="admin_login_btn">ورود</button>
+      <button class="btn" id="admin_cancel_btn">انصراف</button>
+    </div>
+  `;
+  showModal(html);
+  document.getElementById('admin_cancel_btn').addEventListener('click', closeModal);
+  document.getElementById('admin_login_btn').addEventListener('click', ()=>{
+    const v = document.getElementById('admin_pass_input').value;
+    if(v === localStorage.getItem(ADMIN_PASS_KEY)){
+      closeModal();
+      openAdminPanel();
+    } else alert('رمز اشتباه است');
+  });
+}
+
+function openAdminPanel(){
+  const html = `
+    <h3>پنل ادمین</h3>
+    <div class="actions" style="margin-bottom:10px">
+      ${db.services.map(s=>`<button class="btn" data-svc="${s.id}">${escapeHtml(s.name)}</button>`).join('')}
+      <button class="btn" id="admin_forms_btn">فرم‌ها</button>
+      <button class="btn" id="admin_change_pass_btn">تغییر رمز</button>
+    </div>
+    <div id="adminArea"></div>
+    <div style="text-align:left;margin-top:12px"><button class="btn" onclick="closeModal()">خروج</button></div>
+  `;
+  showModal(html);
+  // attach
+  modal.querySelectorAll('[data-svc]').forEach(b => b.addEventListener('click', ()=> openAdminService(b.getAttribute('data-svc'))));
+  modal.querySelector('#admin_forms_btn').addEventListener('click', showAdminForms);
+  modal.querySelector('#admin_change_pass_btn').addEventListener('click', openChangePassModal);
+}
+
+/* Admin: add/edit/delete cards under a service, and inline remaining edit */
+function openAdminService(serviceId){
+  const cards = db.cards.filter(c=>c.service===serviceId);
+  const html = `
+    <h4>مدیریت کارت‌ها — ${escapeHtml(getServiceName(serviceId))}</h4>
+    <div class="list">
+      ${cards.length ? cards.map(c=>`
+        <div class="form-item" data-card="${c.id}">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div style="min-width:0">
+              <div style="font-weight:800">${escapeHtml(formatPrice(c.price))} تومان</div>
+              <div class="meta" style="margin-top:4px">${escapeHtml(c.country)}</div>
+            </div>
+            <div style="text-align:left">
+              <div class="meta">باقی: <input class="editable-num" data-edit="${c.id}" value="${c.remaining}" /></div>
+              <div style="margin-top:8px" class="actions">
+                <button class="btn" data-editcard="${c.id}">ویرایش</button>
+                <button class="btn red" data-deletecard="${c.id}">حذف</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join('') : '<div class="meta">کارت‌ای موجود نیست.</div>'}
+    </div>
+
+    <div style="height:10px"></div>
+    <h4>افزودن کارت جدید</h4>
+    <label>قیمت (تومان)</label><input id="adm_price" placeholder="مثال: 50000" />
+    <label>کشور</label><input id="adm_country" placeholder="مثال: ایران" />
+    <label>تعداد باقی‌مانده</label><input id="adm_remaining" placeholder="مثال: 5" />
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn primary" id="admAddBtn">افزودن</button>
+      <button class="btn" id="admBackBtn">بازگشت</button>
+    </div>
+  `;
+  const adminArea = modal.querySelector('#adminArea');
+  if(adminArea) adminArea.innerHTML = html;
+
+  // attach events for delete/edit
+  adminArea.querySelectorAll('[data-deletecard]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const id = b.getAttribute('data-deletecard');
+      if(confirm('آیا از حذف این کارت اطمینان دارید؟')){
+        db.cards = db.cards.filter(x=>x.id!==id);
+        saveDB(db);
+        showToast('کارت حذف شد');
+        openAdminService(serviceId);
+        renderCardsForService(serviceId);
+      }
+    });
+  });
+  adminArea.querySelectorAll('[data-editcard]').forEach(b=>{
+    b.addEventListener('click', ()=> openEditCardModal(b.getAttribute('data-editcard'), serviceId));
+  });
+  // inline remaining edit
+  adminArea.querySelectorAll('[data-edit]').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const id = inp.getAttribute('data-edit');
+      const v = parseInt(inp.value,10);
+      if(isNaN(v) || v < 0){ showToast('تعداد معتبر نیست'); inp.value = 0; return; }
+      const c = db.cards.find(x=>x.id===id); if(!c) return;
+      c.remaining = v; saveDB(db); showToast('باقی‌مانده به‌روز شد'); renderCardsForService(c.service);
+    });
+  });
+
+  // add handlers
+  adminArea.querySelector('#admBackBtn').addEventListener('click', openAdminPanel);
+  adminArea.querySelector('#admAddBtn').addEventListener('click', ()=>{
+    const priceRaw = adminArea.querySelector('#adm_price').value.trim();
+    const country = adminArea.querySelector('#adm_country').value.trim();
+    const remainingRaw = adminArea.querySelector('#adm_remaining').value.trim();
+    if(!priceRaw) return alert('قیمت را وارد کنید');
+    if(!country) return alert('کشور را وارد کنید');
+    if(!remainingRaw) return alert('تعداد را وارد کنید');
+    const price = parseInt(String(priceRaw).replace(/[^0-9]/g,''),10) || 0;
+    const remaining = parseInt(remainingRaw,10);
+    if(isNaN(remaining) || remaining < 0) return alert('تعداد معتبر نیست');
+    const card = { id: 'c_'+Date.now(), service: serviceId, price, country, remaining };
+    db.cards.unshift(card); saveDB(db);
+    showToast('کارت افزوده شد');
+    openAdminService(serviceId);
+    renderCardsForService(serviceId);
+  });
+}
+
+/* Edit card modal */
+function openEditCardModal(cardId, serviceId){
+  const c = db.cards.find(x=>x.id===cardId); if(!c) return alert('کارت پیدا نشد');
+  const adminArea = modal.querySelector('#adminArea');
+  if(!adminArea) return;
+  adminArea.innerHTML = `
+    <h4>ویرایش کارت</h4>
+    <label>قیمت (تومان)</label><input id="edit_price" value="${escapeHtml(String(c.price))}" />
+    <label>کشور</label><input id="edit_country" value="${escapeHtml(c.country)}" />
+    <label>تعداد باقی‌مانده</label><input id="edit_remaining" value="${escapeHtml(String(c.remaining))}" />
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn primary" id="saveEditBtn">ذخیره</button><button class="btn" id="cancelEditBtn">انصراف</button></div>
+  `;
+  adminArea.querySelector('#cancelEditBtn').addEventListener('click', ()=> openAdminService(serviceId));
+  adminArea.querySelector('#saveEditBtn').addEventListener('click', ()=>{
+    const price = parseInt(String(adminArea.querySelector('#edit_price').value).replace(/[^0-9]/g,''),10) || 0;
+    const country = adminArea.querySelector('#edit_country').value.trim();
+    const remaining = parseInt(adminArea.querySelector('#edit_remaining').value.trim(),10);
+    if(!country) return alert('کشور را وارد کنید');
+    if(isNaN(remaining) || remaining < 0) return alert('تعداد معتبر نیست');
+    c.price = price; c.country = country; c.remaining = remaining;
+    saveDB(db);
+    showToast('کارت ویرایش شد');
+    openAdminService(serviceId);
+    renderCardsForService(serviceId);
+  });
+}
+
+/* Admin: forms list and approve/reject */
+function showAdminForms(){
+  const html = `
+    <h4>فرم‌های ارسال شده</h4>
+    <div class="list">
+      ${db.forms.length ? db.forms.map(f=>{
+        const card = db.cards.find(c=>c.id===f.cardId) || {price:'?', country:'?'};
+        const actions = f.status==='pending' ? `<button class="btn" data-app="${f.id}">تایید</button><button class="btn red" data-rej="${f.id}">رد کردن</button>` : '';
+        return `<div class="form-item" data-form="${f.id}">
+          <div><strong>${escapeHtml(f.id)}</strong> — ${escapeHtml(getServiceName(f.service))} — ${escapeHtml(formatPrice(card.price))} تومان</div>
+          <div class="meta">شماره: ${escapeHtml(f.phone)} — آیدی: ${escapeHtml(f.uid)} — ایمیل: ${escapeHtml(f.email||'-')}</div>
+          <div style="margin-top:8px" class="actions">${actions} <button class="btn" data-view="${f.id}">نمایش</button></div>
+          <div class="meta" style="margin-top:6px">وضعیت: ${escapeHtml(f.status)} ${f.adminNote? ' - توضیح: '+escapeHtml(f.adminNote) : ''}</div>
+        </div>`;
+      }).join('') : '<div class="meta">فرمی وجود ندارد</div>'}
+    </div>
+  `;
+  const adminArea = modal.querySelector('#adminArea');
+  if(adminArea) adminArea.innerHTML = html;
+
+  // handlers
+  adminArea.querySelectorAll('[data-app]').forEach(b=> b.addEventListener('click', ()=> adminApprove(b.getAttribute('data-app'))));
+  adminArea.querySelectorAll('[data-rej]').forEach(b=> b.addEventListener('click', ()=> adminRejectPrompt(b.getAttribute('data-rej'))));
+  adminArea.querySelectorAll('[data-view]').forEach(b=> b.addEventListener('click', ()=>{
+    const id = b.getAttribute('data-view'); const f = db.forms.find(x=>x.id===id);
+    if(!f) return alert('فرم پیدا نشد');
+    const card = db.cards.find(c=>c.id===f.cardId) || {};
+    showModal(`<h4>نمایش فرم ${escapeHtml(f.id)}</h4>
+      <div class="list"><div class="form-item">
+        <div>سرویس: ${escapeHtml(getServiceName(f.service))}</div>
+        <div>شماره: ${escapeHtml(f.phone)}</div>
+        <div>آیدی: ${escapeHtml(f.uid)}</div>
+        <div>ایمیل: ${escapeHtml(f.email||'-')}</div>
+        <div>کارت مرتبط: ${escapeHtml(card.country||'-')} — ${escapeHtml(formatPrice(card.price)||'-')} تومان</div>
+        <div style="margin-top:8px">وضعیت: ${escapeHtml(f.status)} ${f.adminNote? ' - توضیح: '+escapeHtml(f.adminNote): ''}</div>
+      </div></div>
+      <div style="display:flex;gap:8px;margin-top:10px">${f.status==='pending'? `<button class="btn primary" id="viewApprove">تایید</button><button class="btn red" id="viewReject">رد کردن</button>` : ''}<button class="btn" onclick="closeModal()">بستن</button></div>
+    `);
+    if(f.status==='pending'){
+      document.getElementById('viewApprove').addEventListener('click', ()=> adminApprove(f.id));
+      document.getElementById('viewReject').addEventListener('click', ()=> adminRejectPrompt(f.id));
+    }
+  } ));
+}
+
+function adminApprove(formId){
+  const f = db.forms.find(x=>x.id===formId); if(!f) return alert('فرم پیدا نشد');
+  const card = db.cards.find(c=>c.id===f.cardId);
+  if(card){
+    if(card.remaining > 0) card.remaining = Math.max(0, card.remaining - 1);
+  }
+  f.status = 'approved';
+  f.adminNote = 'منتظر پیام ادمین باشید.';
+  saveDB(db);
+  showToast('فرم تایید شد و موجودی کم شد');
+  showAdminForms();
+}
+
+function adminRejectPrompt(formId){
+  const reason = prompt('دلیل رد فرم را بنویسید (اجباری):');
+  if(reason === null) return; // cancelled
+  if(String(reason).trim() === '') return alert('دلیل رد باید وارد شود');
+  const f = db.forms.find(x=>x.id===formId); if(!f) return alert('فرم پیدا نشد');
+  f.status = 'rejected';
+  f.adminNote = reason.trim();
+  saveDB(db);
+  showToast('فرم رد شد');
+  showAdminForms();
+}
+
+/* ================= CHANGE ADMIN PASS ================= */
+function openChangePassModal(){
+  const html = `
+    <h4>تغییر رمز پنل ادمین</h4>
+    <label>رمز فعلی</label><input id="cur_pass" type="password" />
+    <label>رمز جدید</label><input id="new_pass" type="password" />
+    <label>تکرار رمز جدید</label><input id="new_pass2" type="password" />
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn primary" id="saveNewPass">ثبت</button><button class="btn" id="cancelPass">انصراف</button></div>
+  `;
+  showModal(html);
+  modal.querySelector('#cancelPass').addEventListener('click', ()=> openAdminPanel());
+  modal.querySelector('#saveNewPass').addEventListener('click', ()=>{
+    const cur = modal.querySelector('#cur_pass').value;
+    const np = modal.querySelector('#new_pass').value;
+    const np2 = modal.querySelector('#new_pass2').value;
+    if(cur !== localStorage.getItem(ADMIN_PASS_KEY)){ return alert('رمز فعلی درست نیست'); }
+    if(np.length < 3) return alert('رمز جدید حداقل ۳ کاراکتر باشد');
+    if(np !== np2) return alert('رمزها یکسان نیستند');
+    localStorage.setItem(ADMIN_PASS_KEY, np);
+    showToast('رمز پنل با موفقیت تغییر کرد');
+    openAdminPanel();
+  });
+}
+
+/* ================= UTIL FUNCTIONS ================= */
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function formatPrice(v){ if(v===undefined||v===null) return ''; return String(v).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+
+/* ================= INITIALIZATION ================= */
+renderServices();
+// if there are any cards, show first service by default
+if(db.services.length && db.cards.length){
+  renderCardsForService(db.cards[0].service);
+}
+
+/* expose some functions to global for inline handlers used in templates */
+window.openBuyModal = openBuyModal;
+window.renderCardsForService = renderCardsForService;
+window.openAdminPanel = openAdminPanel;
+window.openAdminService = openAdminService;
+window.showAdminForms = showAdminForms;
+window.openChangePassModal = openChangePassModal;
+
+/* Save DB when page unloads (redundant but safe) */
+window.addEventListener('beforeunload', ()=> saveDB(db));
+</script>
+</body>
+</html>
